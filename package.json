@@ -1,0 +1,48 @@
+{
+  "name": "ur10-kiosk-pwa",
+  "version": "1.0.0",
+  "description": "Ubuntu Kiosk PWA for UR10 Workspace - Thin Client + Server Wrapper",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:ui\" \"npm run dev:server\"",
+    "dev:ui": "cd apps/kiosk-ui && npm run dev",
+    "dev:server": "cd apps/robot-server && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "build": "npm run build:ui && npm run build:server",
+    "build:ui": "cd apps/kiosk-ui && npm run build",
+    "build:server": "cd apps/robot-server && echo 'Server build complete'",
+    "test": "npm run test:ui && npm run test:e2e",
+    "test:ui": "cd apps/kiosk-ui && npm run test",
+    "test:e2e": "cd apps/kiosk-ui && npm run test:e2e",
+    "lint": "npm run lint:ui",
+    "lint:ui": "cd apps/kiosk-ui && npm run lint",
+    "install:all": "npm install && cd apps/kiosk-ui && npm install && cd ../robot-server && pip install -r requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FH-EngineeringClub/UR10_Workspace"
+  },
+  "keywords": [
+    "ur10",
+    "robot",
+    "kiosk",
+    "pwa",
+    "ubuntu",
+    "touchscreen",
+    "fastapi",
+    "nextjs"
+  ],
+  "author": "FH Engineering Club",
+  "license": "MIT"
+}
+

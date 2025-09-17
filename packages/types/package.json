@@ -1,0 +1,27 @@
+{
+  "name": "@ur10-kiosk/types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types for UR10 Kiosk PWA system",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "typescript",
+    "types",
+    "ur10",
+    "robot",
+    "kiosk"
+  ],
+  "author": "UR10 Kiosk Team",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  },
+  "files": [
+    "dist/**/*"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "name": "ur10-kiosk-e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for UR10 Robot Kiosk PWA system",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report",
+    "test:kiosk": "playwright test --grep @kiosk",
+    "test:robot": "playwright test --grep @robot",
+    "test:chess": "playwright test --grep @chess",
+    "test:security": "playwright test --grep @security",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --grep @regression",
+    "install-browsers": "playwright install",
+    "install-deps": "playwright install-deps"
+  },
+  "keywords": [
+    "playwright",
+    "e2e",
+    "testing",
+    "ur10",
+    "robot",
+    "kiosk",
+    "pwa"
+  ],
+  "author": "UR10 Kiosk Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "axios": "^1.6.0"
+  }
+}
+

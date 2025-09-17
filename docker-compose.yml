@@ -1,0 +1,241 @@
+# ============================================================================
+# UR10 Robot Kiosk - Docker Compose Configuration
+# ============================================================================
+# Complete containerized deployment for the UR10 robot kiosk system
+# Includes robot server, kiosk UI, nginx proxy, and supporting services
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # UR10 Robot Server (FastAPI)
+  robot-server:
+    build:
+      context: .
+      dockerfile: deployment/docker/robot-server/Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VERSION: ${VERSION:-1.0.0}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
+    container_name: ur10-robot-server
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ROBOT_IP=${ROBOT_IP:-192.168.1.100}
+      - ROBOT_PORT=${ROBOT_PORT:-30002}
+      - MOCK_MODE=${MOCK_MODE:-false}
+      - CORS_ORIGINS=https://localhost,https://kiosk-ui
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./ur10_kiosk.db}
+    volumes:
+      - robot-data:/app/data
+      - robot-logs:/app/logs
+      - ./deployment/security/certificates:/app/certs:ro
+    networks:
+      - ur10-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - redis
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.robot-server.rule=Host(`robot.localhost`)"
+      - "traefik.http.services.robot-server.loadbalancer.server.port=8000"
+
+  # Kiosk UI (React PWA with Nginx)
+  kiosk-ui:
+    build:
+      context: .
+      dockerfile: deployment/docker/kiosk-ui/Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VERSION: ${VERSION:-1.0.0}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://localhost:8000}
+        VITE_WS_URL: ${VITE_WS_URL:-wss://localhost:8000}
+    container_name: ur10-kiosk-ui
+    restart: unless-stopped
+    ports:
+      - "${KIOSK_HTTP_PORT:-80}:80"
+      - "${KIOSK_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deployment/security/certificates:/etc/nginx/ssl:ro
+      - nginx-cache:/var/cache/nginx
+      - nginx-logs:/var/log/nginx
+    networks:
+      - ur10-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - robot-server
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kiosk-ui.rule=Host(`localhost`)"
+      - "traefik.http.services.kiosk-ui.loadbalancer.server.port=443"
+      - "traefik.http.routers.kiosk-ui.tls=true"
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: ur10-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-ur10-redis-password}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-ur10-redis-password}
+    volumes:
+      - redis-data:/data
+    networks:
+      - ur10-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=false"
+
+  # PostgreSQL database (optional, for production)
+  postgres:
+    image: postgres:15-alpine
+    container_name: ur10-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-ur10_kiosk}
+      - POSTGRES_USER=${POSTGRES_USER:-ur10_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ur10_password}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deployment/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - ur10-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ur10_user} -d ${POSTGRES_DB:-ur10_kiosk}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=false"
+    profiles:
+      - production
+
+  # Traefik reverse proxy (optional)
+  traefik:
+    image: traefik:v3.0
+    container_name: ur10-traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-data:/letsencrypt
+    networks:
+      - ur10-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+    profiles:
+      - traefik
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ur10-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./deployment/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - ur10-network
+    ports:
+      - "9090:9090"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)"
+    profiles:
+      - monitoring
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ur10-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deployment/docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deployment/docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - ur10-network
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
+    profiles:
+      - monitoring
+
+# Networks
+networks:
+  ur10-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes
+volumes:
+  robot-data:
+    driver: local
+  robot-logs:
+    driver: local
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
+  nginx-cache:
+    driver: local
+  nginx-logs:
+    driver: local
+  traefik-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+

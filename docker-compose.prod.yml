@@ -1,0 +1,245 @@
+# ============================================================================
+# UR10 Robot Kiosk - Production Docker Compose Override
+# ============================================================================
+# Production-specific configuration with security, monitoring, and scaling
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # Robot Server - Production Configuration
+  robot-server:
+    environment:
+      - LOG_LEVEL=INFO
+      - MOCK_MODE=false
+      - WORKERS=2  # Multiple workers for production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-ur10_user}:${POSTGRES_PASSWORD:-ur10_password}@postgres:5432/${POSTGRES_DB:-ur10_kiosk}
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    depends_on:
+      - postgres
+      - redis
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Kiosk UI - Production Configuration
+  kiosk-ui:
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL - Production Configuration
+  postgres:
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}  # Use secure password from env
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    command: |
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+    profiles: []  # Always start in production
+
+  # Redis - Production Configuration
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    command: |
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+
+  # Nginx Load Balancer (for multiple robot-server instances)
+  nginx-lb:
+    image: nginx:alpine
+    container_name: ur10-nginx-lb
+    volumes:
+      - ./deployment/docker/nginx/nginx-lb.conf:/etc/nginx/nginx.conf:ro
+      - ./deployment/security/certificates:/etc/nginx/ssl:ro
+    ports:
+      - "8443:443"  # Load balancer HTTPS port
+    networks:
+      - ur10-network
+    depends_on:
+      - robot-server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    profiles:
+      - load-balancer
+
+  # Log Aggregation with Fluentd
+  fluentd:
+    image: fluent/fluentd:v1.16-debian-1
+    container_name: ur10-fluentd
+    volumes:
+      - ./deployment/docker/fluentd/fluent.conf:/fluentd/etc/fluent.conf:ro
+      - /var/log:/var/log:ro
+      - fluentd-data:/fluentd/log
+    networks:
+      - ur10-network
+    depends_on:
+      - elasticsearch
+    profiles:
+      - logging
+
+  # Elasticsearch for log storage
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: ur10-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - ur10-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    profiles:
+      - logging
+
+  # Kibana for log visualization
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: ur10-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - ur10-network
+    depends_on:
+      - elasticsearch
+    profiles:
+      - logging
+
+  # Backup Service
+  backup:
+    image: alpine:latest
+    container_name: ur10-backup
+    volumes:
+      - postgres-data:/backup/postgres:ro
+      - redis-data:/backup/redis:ro
+      - robot-data:/backup/robot:ro
+      - ./deployment/docker/scripts/backup.sh:/backup.sh:ro
+      - backup-storage:/backups
+    networks:
+      - ur10-network
+    environment:
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}  # Daily at 2 AM
+      - POSTGRES_USER=${POSTGRES_USER:-ur10_user}
+      - POSTGRES_DB=${POSTGRES_DB:-ur10_kiosk}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    command: |
+      sh -c "
+        apk add --no-cache postgresql-client redis dcron &&
+        echo '${BACKUP_SCHEDULE:-0 2 * * *} /backup.sh' | crontab - &&
+        crond -f
+      "
+    profiles:
+      - backup
+
+  # Health Check Service
+  healthcheck:
+    image: alpine/curl:latest
+    container_name: ur10-healthcheck
+    volumes:
+      - ./deployment/docker/scripts/healthcheck.sh:/healthcheck.sh:ro
+    networks:
+      - ur10-network
+    environment:
+      - CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-60}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - EMAIL_ALERTS=${EMAIL_ALERTS:-false}
+    command: |
+      sh -c "
+        apk add --no-cache curl jq &&
+        while true; do
+          /healthcheck.sh
+          sleep ${CHECK_INTERVAL:-60}
+        done
+      "
+    depends_on:
+      - kiosk-ui
+      - robot-server
+    profiles:
+      - monitoring
+
+# Production-specific volumes
+volumes:
+  fluentd-data:
+    driver: local
+  elasticsearch-data:
+    driver: local
+  backup-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKUP_PATH:-/opt/ur10-backups}
+

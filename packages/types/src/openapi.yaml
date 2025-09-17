@@ -1,0 +1,1056 @@
+openapi: 3.0.3
+info:
+  title: UR10 Robot Kiosk API
+  description: |
+    REST API for controlling UR10 robot and managing chess games in kiosk mode.
+    
+    This API provides endpoints for:
+    - Robot connection and control
+    - Real-time telemetry via WebSocket
+    - Chess game management with engine integration
+    - Session management and authentication
+    - System configuration and settings
+    
+    ## Authentication
+    
+    The API uses PIN-based authentication with different access levels:
+    - **Operator**: Basic robot control and chess gameplay
+    - **Supervisor**: Advanced settings and safety overrides  
+    - **Admin**: Full system configuration and maintenance
+    
+    ## WebSocket Endpoints
+    
+    Real-time communication is handled via WebSocket connections:
+    - `/ws/telemetry` - Robot telemetry and status updates
+    - `/ws/chess` - Chess game state updates
+    - `/ws/system` - System alerts and notifications
+    
+  version: 1.0.0
+  contact:
+    name: UR10 Kiosk Team
+    email: support@ur10-kiosk.local
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://localhost:8000
+    description: Local development server
+  - url: https://ur10-kiosk.local:8000
+    description: Production kiosk server
+
+tags:
+  - name: Authentication
+    description: Session management and PIN authentication
+  - name: Robot Control
+    description: Robot connection, movement, and control operations
+  - name: Robot Status
+    description: Robot telemetry and status information
+  - name: Chess Game
+    description: Chess game management and engine integration
+  - name: Settings
+    description: System configuration and preferences
+  - name: System
+    description: System health, logs, and maintenance
+
+paths:
+  # Authentication Endpoints
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Authenticate with PIN
+      description: Authenticate user with PIN and establish session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin:
+                  type: string
+                  description: 4-digit PIN code
+                  example: "1234"
+                role:
+                  type: string
+                  enum: [operator, supervisor, admin]
+                  description: Requested access level
+                sessionId:
+                  type: string
+                  description: Existing session ID to extend
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid PIN or insufficient privileges
+        '429':
+          description: Too many failed attempts, account locked
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: End session
+      description: Terminate current session and lock interface
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Logout successful
+        '401':
+          description: Not authenticated
+
+  /api/auth/session:
+    get:
+      tags: [Authentication]
+      summary: Get session info
+      description: Retrieve current session information
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Session information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+        '401':
+          description: Not authenticated
+
+  # Robot Control Endpoints
+  /api/robot/connect:
+    post:
+      tags: [Robot Control]
+      summary: Connect to robot
+      description: Establish connection to UR10 robot
+      security:
+        - SessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostname:
+                  type: string
+                  description: Robot IP address or hostname
+                  example: "192.168.1.100"
+                port:
+                  type: integer
+                  description: Robot port number
+                  example: 30004
+                timeout:
+                  type: integer
+                  description: Connection timeout in milliseconds
+                  example: 5000
+      responses:
+        '200':
+          description: Connection successful
+        '400':
+          description: Invalid connection parameters
+        '503':
+          description: Unable to connect to robot
+
+  /api/robot/disconnect:
+    post:
+      tags: [Robot Control]
+      summary: Disconnect from robot
+      description: Close connection to UR10 robot
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Disconnection successful
+        '400':
+          description: Robot not connected
+
+  /api/robot/home:
+    post:
+      tags: [Robot Control]
+      summary: Home robot
+      description: Move robot to home position
+      security:
+        - SessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                speed:
+                  type: number
+                  description: Movement speed (m/s)
+                  example: 0.1
+                acceleration:
+                  type: number
+                  description: Movement acceleration (m/s²)
+                  example: 0.5
+      responses:
+        '200':
+          description: Homing started
+        '400':
+          description: Robot not connected or invalid parameters
+        '409':
+          description: Robot busy or in error state
+
+  /api/robot/stop:
+    post:
+      tags: [Robot Control]
+      summary: Stop robot
+      description: Stop current robot movement
+      security:
+        - SessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                emergency:
+                  type: boolean
+                  description: Emergency stop (true) or normal stop (false)
+                  example: false
+      responses:
+        '200':
+          description: Stop command sent
+        '400':
+          description: Robot not connected
+
+  /api/robot/jog:
+    post:
+      tags: [Robot Control]
+      summary: Jog robot
+      description: Move robot incrementally in specified direction
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JogRequest'
+      responses:
+        '200':
+          description: Jog movement started
+        '400':
+          description: Invalid jog parameters
+        '409':
+          description: Robot busy or in error state
+
+  /api/robot/move:
+    post:
+      tags: [Robot Control]
+      summary: Move robot to position
+      description: Move robot to specified position or joint configuration
+      security:
+        - SessionAuth: [supervisor]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveRequest'
+      responses:
+        '200':
+          description: Movement started
+        '400':
+          description: Invalid move parameters
+        '403':
+          description: Insufficient privileges
+        '409':
+          description: Robot busy or in error state
+
+  # Robot Status Endpoints
+  /api/robot/status:
+    get:
+      tags: [Robot Status]
+      summary: Get robot status
+      description: Retrieve current robot status and telemetry
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Robot status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RobotTelemetry'
+
+  /api/robot/telemetry:
+    get:
+      tags: [Robot Status]
+      summary: Get telemetry history
+      description: Retrieve historical telemetry data
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: start
+          in: query
+          description: Start timestamp (Unix milliseconds)
+          schema:
+            type: integer
+        - name: end
+          in: query
+          description: End timestamp (Unix milliseconds)
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Maximum number of records
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Telemetry data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RobotTelemetry'
+
+  # Chess Game Endpoints
+  /api/chess/games:
+    get:
+      tags: [Chess Game]
+      summary: List chess games
+      description: Get list of chess games
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: List of games
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChessGameState'
+
+    post:
+      tags: [Chess Game]
+      summary: Create new game
+      description: Start a new chess game
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode:
+                  type: string
+                  enum: [human, engine]
+                  description: Game mode
+                playerColor:
+                  type: string
+                  enum: [white, black]
+                  description: Human player color (engine mode only)
+                engineLevel:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  description: Engine difficulty level
+      responses:
+        '201':
+          description: Game created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChessGameState'
+
+  /api/chess/games/{gameId}:
+    get:
+      tags: [Chess Game]
+      summary: Get game state
+      description: Retrieve current state of chess game
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: Game ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChessGameState'
+        '404':
+          description: Game not found
+
+    delete:
+      tags: [Chess Game]
+      summary: Delete game
+      description: Delete chess game
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: Game ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game deleted
+        '404':
+          description: Game not found
+
+  /api/chess/games/{gameId}/moves:
+    post:
+      tags: [Chess Game]
+      summary: Make move
+      description: Make a chess move
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: Game ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [move]
+              properties:
+                move:
+                  type: string
+                  description: Move in UCI or SAN notation
+                  example: "e2e4"
+                executeWithRobot:
+                  type: boolean
+                  description: Execute move with robot
+                  default: false
+      responses:
+        '200':
+          description: Move made
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChessGameState'
+        '400':
+          description: Invalid move
+        '404':
+          description: Game not found
+
+  /api/chess/games/{gameId}/analyze:
+    post:
+      tags: [Chess Game]
+      summary: Analyze position
+      description: Analyze current position with chess engine
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          description: Game ID
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                depth:
+                  type: integer
+                  description: Analysis depth
+                  example: 15
+                timeLimit:
+                  type: integer
+                  description: Time limit in seconds
+                  example: 5
+      responses:
+        '200':
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bestMove:
+                    type: string
+                    description: Best move in UCI notation
+                  evaluation:
+                    type: number
+                    description: Position evaluation in centipawns
+                  depth:
+                    type: integer
+                    description: Analysis depth reached
+                  principalVariation:
+                    type: array
+                    items:
+                      type: string
+                    description: Principal variation moves
+
+  # Settings Endpoints
+  /api/settings:
+    get:
+      tags: [Settings]
+      summary: Get all settings
+      description: Retrieve all system settings
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: System settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KioskSettings'
+
+    put:
+      tags: [Settings]
+      summary: Update settings
+      description: Update system settings
+      security:
+        - SessionAuth: [supervisor]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [section, settings]
+              properties:
+                section:
+                  type: string
+                  enum: [robot, security, interface, system, robotParameters]
+                  description: Settings section to update
+                settings:
+                  type: object
+                  description: Settings to update
+      responses:
+        '200':
+          description: Settings updated
+        '400':
+          description: Invalid settings
+        '403':
+          description: Insufficient privileges
+
+  /api/settings/backup:
+    post:
+      tags: [Settings]
+      summary: Backup settings
+      description: Create settings backup
+      security:
+        - SessionAuth: [admin]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                includeSecrets:
+                  type: boolean
+                  description: Include sensitive data in backup
+                  default: false
+      responses:
+        '200':
+          description: Backup created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backup:
+                    type: string
+                    description: Base64 encoded backup data
+                  timestamp:
+                    type: integer
+                    description: Backup timestamp
+        '403':
+          description: Insufficient privileges
+
+  /api/settings/restore:
+    post:
+      tags: [Settings]
+      summary: Restore settings
+      description: Restore settings from backup
+      security:
+        - SessionAuth: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [backup]
+              properties:
+                backup:
+                  type: string
+                  description: Base64 encoded backup data
+                overwriteExisting:
+                  type: boolean
+                  description: Overwrite existing settings
+                  default: false
+      responses:
+        '200':
+          description: Settings restored
+        '400':
+          description: Invalid backup data
+        '403':
+          description: Insufficient privileges
+
+  # System Endpoints
+  /api/system/health:
+    get:
+      tags: [System]
+      summary: System health check
+      description: Get system health status
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  timestamp:
+                    type: integer
+                  uptime:
+                    type: integer
+                    description: System uptime in seconds
+                  version:
+                    type: string
+                    description: Software version
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        enum: [healthy, unhealthy]
+                      robot:
+                        type: string
+                        enum: [connected, disconnected, error]
+                      chess_engine:
+                        type: string
+                        enum: [available, unavailable]
+
+  /api/system/logs:
+    get:
+      tags: [System]
+      summary: Get system logs
+      description: Retrieve system logs
+      security:
+        - SessionAuth: [supervisor]
+      parameters:
+        - name: level
+          in: query
+          description: Log level filter
+          schema:
+            type: string
+            enum: [debug, info, warn, error]
+        - name: limit
+          in: query
+          description: Maximum number of log entries
+          schema:
+            type: integer
+            default: 100
+        - name: start
+          in: query
+          description: Start timestamp
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    timestamp:
+                      type: integer
+                    level:
+                      type: string
+                    message:
+                      type: string
+                    component:
+                      type: string
+                    details:
+                      type: object
+
+components:
+  securitySchemes:
+    SessionAuth:
+      type: apiKey
+      in: header
+      name: X-Session-ID
+      description: Session ID obtained from login
+
+  schemas:
+    # Authentication Schemas
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        sessionId:
+          type: string
+        role:
+          type: string
+          enum: [operator, supervisor, admin]
+        message:
+          type: string
+        expiresAt:
+          type: integer
+
+    SessionInfo:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        userId:
+          type: string
+        role:
+          type: string
+          enum: [operator, supervisor, admin]
+        isLocked:
+          type: boolean
+        isSupervisor:
+          type: boolean
+        loginTime:
+          type: integer
+        lastActivity:
+          type: integer
+        ipAddress:
+          type: string
+        userAgent:
+          type: string
+
+    # Robot Schemas
+    Vector3D:
+      type: object
+      required: [x, y, z]
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+
+    Rotation3D:
+      type: object
+      required: [rx, ry, rz]
+      properties:
+        rx:
+          type: number
+        ry:
+          type: number
+        rz:
+          type: number
+
+    Pose6D:
+      allOf:
+        - $ref: '#/components/schemas/Vector3D'
+        - $ref: '#/components/schemas/Rotation3D'
+
+    JointPositions:
+      type: object
+      required: [base, shoulder, elbow, wrist1, wrist2, wrist3]
+      properties:
+        base:
+          type: number
+        shoulder:
+          type: number
+        elbow:
+          type: number
+        wrist1:
+          type: number
+        wrist2:
+          type: number
+        wrist3:
+          type: number
+
+    RobotTelemetry:
+      type: object
+      required: [timestamp, connectionState, robotState, safetyMode, tcpPosition, jointPositions]
+      properties:
+        timestamp:
+          type: integer
+        connectionState:
+          type: string
+          enum: [disconnected, connecting, connected, error]
+        robotState:
+          type: string
+          enum: [IDLE, RUNNING, PAUSED, STOPPED, ERROR, EMERGENCY_STOP, PROTECTIVE_STOP]
+        safetyMode:
+          type: string
+          enum: [NORMAL, REDUCED, PROTECTIVE_STOP, RECOVERY, SAFEGUARD_STOP]
+        tcpPosition:
+          $ref: '#/components/schemas/Pose6D'
+        jointPositions:
+          $ref: '#/components/schemas/JointPositions'
+        jointVelocities:
+          $ref: '#/components/schemas/JointPositions'
+        jointCurrents:
+          $ref: '#/components/schemas/JointPositions'
+        jointTemperatures:
+          $ref: '#/components/schemas/JointPositions'
+        isEmergencyStop:
+          type: boolean
+        isProtectiveStop:
+          type: boolean
+        isProgramRunning:
+          type: boolean
+        isRobotConnected:
+          type: boolean
+        currentProgram:
+          type: string
+        programState:
+          type: string
+        lastError:
+          type: string
+        errorCode:
+          type: integer
+
+    JogRequest:
+      type: object
+      required: [mode, axis, direction, distance, speed]
+      properties:
+        mode:
+          type: string
+          enum: [tcp, joint]
+        axis:
+          type: string
+          enum: [x, y, z, rx, ry, rz, base, shoulder, elbow, wrist1, wrist2, wrist3]
+        direction:
+          type: string
+          enum: [positive, negative]
+        distance:
+          type: number
+          minimum: 0
+        speed:
+          type: number
+          minimum: 0
+        acceleration:
+          type: number
+          minimum: 0
+
+    MoveRequest:
+      type: object
+      required: [target, speed, acceleration, moveType]
+      properties:
+        target:
+          oneOf:
+            - $ref: '#/components/schemas/Pose6D'
+            - $ref: '#/components/schemas/JointPositions'
+        speed:
+          type: number
+          minimum: 0
+        acceleration:
+          type: number
+          minimum: 0
+        blend:
+          type: number
+          minimum: 0
+        moveType:
+          type: string
+          enum: [linear, joint, circular]
+
+    # Chess Schemas
+    ChessMove:
+      type: object
+      required: [from, to, piece, san, uci]
+      properties:
+        from:
+          type: string
+          pattern: '^[a-h][1-8]$'
+        to:
+          type: string
+          pattern: '^[a-h][1-8]$'
+        piece:
+          type: string
+          enum: [pawn, rook, knight, bishop, queen, king]
+        captured:
+          type: string
+          enum: [pawn, rook, knight, bishop, queen, king]
+        promotion:
+          type: string
+          enum: [rook, knight, bishop, queen]
+        castling:
+          type: string
+          enum: [kingside, queenside]
+        enPassant:
+          type: boolean
+        check:
+          type: boolean
+        checkmate:
+          type: boolean
+        stalemate:
+          type: boolean
+        san:
+          type: string
+          description: Standard Algebraic Notation
+        uci:
+          type: string
+          description: Universal Chess Interface notation
+
+    ChessGameState:
+      type: object
+      required: [gameId, mode, status, currentPlayer, fen, pgn, moves]
+      properties:
+        gameId:
+          type: string
+        mode:
+          type: string
+          enum: [human, engine]
+        status:
+          type: string
+          enum: [waiting, active, paused, finished, aborted]
+        currentPlayer:
+          type: string
+          enum: [white, black]
+        board:
+          type: array
+          items:
+            type: array
+            items:
+              oneOf:
+                - type: 'null'
+                - type: object
+                  properties:
+                    piece:
+                      type: string
+                      enum: [pawn, rook, knight, bishop, queen, king]
+                    color:
+                      type: string
+                      enum: [white, black]
+                    square:
+                      type: string
+        moves:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChessMove'
+        fen:
+          type: string
+          description: Forsyth-Edwards Notation
+        pgn:
+          type: string
+          description: Portable Game Notation
+        winner:
+          type: string
+          enum: [white, black, draw]
+        result:
+          type: string
+          enum: ['1-0', '0-1', '1/2-1/2', '*']
+        termination:
+          type: string
+          enum: [checkmate, stalemate, resignation, timeout, draw, aborted]
+        engineDepth:
+          type: integer
+        engineEvaluation:
+          type: number
+        engineBestMove:
+          type: string
+        engineThinking:
+          type: boolean
+        robotExecuting:
+          type: boolean
+        lastRobotMove:
+          $ref: '#/components/schemas/ChessMove'
+        robotMoveQueue:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChessMove'
+
+    # Settings Schemas
+    KioskSettings:
+      type: object
+      properties:
+        robot:
+          type: object
+          properties:
+            hostname:
+              type: string
+            port:
+              type: integer
+            timeout:
+              type: integer
+            retryAttempts:
+              type: integer
+            retryDelay:
+              type: integer
+        security:
+          type: object
+          properties:
+            operatorPin:
+              type: string
+            supervisorPin:
+              type: string
+            adminPin:
+              type: string
+            autoLockEnabled:
+              type: boolean
+            autoLockTimeout:
+              type: integer
+            maxFailedAttempts:
+              type: integer
+            lockoutDuration:
+              type: integer
+        interface:
+          type: object
+          properties:
+            theme:
+              type: string
+              enum: [light, dark, auto]
+            language:
+              type: string
+            touchSensitivity:
+              type: number
+            screenTimeout:
+              type: integer
+            showAdvancedControls:
+              type: boolean
+            enableSounds:
+              type: boolean
+            enableHapticFeedback:
+              type: boolean
+        system:
+          type: object
+          properties:
+            mockMode:
+              type: boolean
+            debugMode:
+              type: boolean
+            logLevel:
+              type: string
+              enum: [debug, info, warn, error]
+            telemetryInterval:
+              type: integer
+            heartbeatInterval:
+              type: integer
+            maxLogSize:
+              type: integer
+            backupEnabled:
+              type: boolean
+            backupInterval:
+              type: integer
+

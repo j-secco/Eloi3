@@ -1,0 +1,32 @@
+[Unit]
+Description=UR10 Kiosk Network Connectivity Check
+Documentation=https://github.com/ur10-kiosk/docs
+After=network.target NetworkManager.service
+Wants=network.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+# Restart policy
+Restart=on-failure
+RestartSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ur10-kiosk-network
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+ExecStart=/usr/local/bin/ur10-kiosk-network-check.sh
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,44 @@
+[Unit]
+Description=UR10 Kiosk Watchdog Service
+Documentation=https://github.com/ur10-kiosk/docs
+After=network.target graphical-session.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=ur10kiosk
+Group=ur10kiosk
+WorkingDirectory=/home/ur10kiosk
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/ur10kiosk/.Xauthority
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ur10-kiosk-watchdog
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/ur10kiosk /var/log/ur10-kiosk
+
+ExecStart=/usr/local/bin/ur10-kiosk-watchdog.sh
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+
