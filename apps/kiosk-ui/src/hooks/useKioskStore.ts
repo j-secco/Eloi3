@@ -102,7 +102,7 @@ export const useKioskStore = create(
       // Actions
       initializeSession: async () => {
         try {
-          const response = await fetch(`${API_BASE}/api/auth/session`, {
+          const response = await fetch(`${API_BASE}/api/v1/session/start`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -116,10 +116,10 @@ export const useKioskStore = create(
           if (response.ok) {
             const data = await response.json()
             set({ 
-              sessionId: data.sessionId,
+              sessionId: data.session_id,
               isLocked: false // Auto-unlock for kiosk mode
             })
-            return data.sessionId
+            return data.session_id
           } else {
             throw new Error('Failed to initialize session')
           }
@@ -152,16 +152,11 @@ export const useKioskStore = create(
         if (!sessionId) return false
         
         try {
-          const response = await fetch(`${API_BASE}/api/auth/login`, {
+          const response = await fetch(`${API_BASE}/api/v1/session/supervisor?pin=${encodeURIComponent(pin)}`, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
               'X-Session-ID': sessionId
-            },
-            body: JSON.stringify({
-              pin,
-              role: 'supervisor'
-            })
+            }
           })
           
           if (response.ok) {
@@ -180,7 +175,7 @@ export const useKioskStore = create(
         if (!sessionId) return false
         
         try {
-          const response = await fetch(`${API_BASE}/api/robot/connect`, {
+          const response = await fetch(`${API_BASE}/api/v1/robot/connect`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -208,7 +203,7 @@ export const useKioskStore = create(
         if (!sessionId) return false
         
         try {
-          const response = await fetch(`${API_BASE}/api/robot/disconnect`, {
+          const response = await fetch(`${API_BASE}/api/v1/robot/disconnect`, {
             method: 'POST',
             headers: {
               'X-Session-ID': sessionId
@@ -231,7 +226,7 @@ export const useKioskStore = create(
         if (!sessionId) return false
         
         try {
-          const response = await fetch(`${API_BASE}/api/robot/home`, {
+          const response = await fetch(`${API_BASE}/api/v1/robot/home`, {
             method: 'POST',
             headers: {
               'X-Session-ID': sessionId
@@ -250,7 +245,7 @@ export const useKioskStore = create(
         if (!sessionId) return false
         
         try {
-          const response = await fetch(`${API_BASE}/api/robot/jog`, {
+          const response = await fetch(`${API_BASE}/api/v1/robot/jog`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -271,7 +266,7 @@ export const useKioskStore = create(
         if (!sessionId) return false
         
         try {
-          const response = await fetch(`${API_BASE}/api/robot/stop`, {
+          const response = await fetch(`${API_BASE}/api/v1/robot/stop`, {
             method: 'POST',
             headers: {
               'X-Session-ID': sessionId
@@ -290,7 +285,7 @@ export const useKioskStore = create(
         if (!sessionId) return false
         
         try {
-          const response = await fetch(`${API_BASE}/api/robot/stop`, {
+          const response = await fetch(`${API_BASE}/api/v1/robot/estop`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -330,7 +325,7 @@ export const useKioskStore = create(
         }
       },
       
-      updateTelemetry: (telemetry: RobotTelemetry) => {
+      updateTelemetry: (telemetry) => {
         set({ 
           telemetry,
           robotState: telemetry.robotState,
