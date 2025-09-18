@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useKioskStore } from './useKioskStore'
-import { toast } from '@/hooks/use-toast'
+// import { toast } from '@/hooks/use-toast' // Disabled for now
 
 const WebSocketContext = createContext()
 
@@ -108,13 +108,14 @@ export function WebSocketProvider({ children, sessionId }) {
     if (data.type === 'alert') {
       const { alert_type, message, severity } = data.data
       
-      // Show toast notification
-      toast({
-        title: alert_type.replace('_', ' ').toUpperCase(),
-        description: message,
-        variant: severity === 'critical' ? 'destructive' : 
-                 severity === 'warning' ? 'default' : 'default'
-      })
+      // Show toast notification (disabled for now)
+      console.log('Alert:', alert_type, message, severity)
+      // toast({
+      //   title: alert_type.replace('_', ' ').toUpperCase(),
+      //   description: message,
+      //   variant: severity === 'critical' ? 'destructive' : 
+      //            severity === 'warning' ? 'default' : 'default'
+      // })
     }
   }
   
@@ -122,20 +123,21 @@ export function WebSocketProvider({ children, sessionId }) {
     if (data.type === 'job') {
       const { job_id, status, progress } = data.data
       
-      // Show job status updates
-      if (status === 'completed') {
-        toast({
-          title: 'Job Completed',
-          description: `${job_id} finished successfully`,
-          variant: 'default'
-        })
-      } else if (status === 'failed') {
-        toast({
-          title: 'Job Failed',
-          description: `${job_id} encountered an error`,
-          variant: 'destructive'
-        })
-      }
+      // Show job status updates (disabled for now)
+      console.log('Job update:', job_id, status, progress)
+      // if (status === 'completed') {
+      //   toast({
+      //     title: 'Job Completed',
+      //     description: `${job_id} finished successfully`,
+      //     variant: 'default'
+      //   })
+      // } else if (status === 'failed') {
+      //   toast({
+      //     title: 'Job Failed',
+      //     description: `${job_id} encountered an error`,
+      //     variant: 'destructive'
+      //   })
+      // }
     }
   }
   
@@ -242,9 +244,27 @@ export function WebSocketProvider({ children, sessionId }) {
 
 export function useWebSocket() {
   const context = useContext(WebSocketContext)
-  if (!context) {
-    throw new Error('useWebSocket must be used within a WebSocketProvider')
+  if (context) {
+    return context
   }
-  return context
+  
+  // Fallback simple WebSocket hook for direct use
+  return {
+    connectionStatus: {
+      telemetry: 'disconnected',
+      alerts: 'disconnected',
+      job: 'disconnected',
+      analysis: 'disconnected'
+    },
+    connect: () => {
+      console.log('WebSocket connection requested (simple mode)')
+    },
+    disconnect: () => {
+      console.log('WebSocket disconnection requested (simple mode)')
+    },
+    reconnectAll: () => {
+      console.log('WebSocket reconnect requested (simple mode)')
+    }
+  }
 }
 

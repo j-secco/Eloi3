@@ -1,74 +1,74 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { 
-  RobotTelemetry, 
-  KioskSettings, 
-  SessionInfo,
-  RobotConnectionState,
-  RobotState,
-  JogRequest,
-  ChessGameState,
-  DEFAULT_ROBOT_CONFIG,
-  DEFAULT_SECURITY_CONFIG,
-  DEFAULT_INTERFACE_CONFIG,
-  DEFAULT_SYSTEM_CONFIG,
-  DEFAULT_ROBOT_PARAMETERS
-} from '@ur10-kiosk/types'
+
+// Temporary simplified types while we fix the @ur10-kiosk/types import
+const DEFAULT_ROBOT_CONFIG = {
+  hostname: '192.168.1.100',
+  port: 30004,
+  timeout: 5000,
+  retryAttempts: 3,
+  retryDelay: 1000,
+}
+
+const DEFAULT_SECURITY_CONFIG = {
+  operatorPin: '1234',
+  supervisorPin: '5678',
+  adminPin: '9999',
+  autoLockEnabled: true,
+  autoLockTimeout: 5,
+  maxFailedAttempts: 3,
+  lockoutDuration: 15,
+}
+
+const DEFAULT_INTERFACE_CONFIG = {
+  theme: 'light',
+  language: 'en',
+  touchSensitivity: 1.0,
+  screenTimeout: 30,
+  showAdvancedControls: false,
+  enableSounds: true,
+  enableHapticFeedback: true,
+}
+
+const DEFAULT_SYSTEM_CONFIG = {
+  mockMode: true,
+  debugMode: false,
+  logLevel: 'info',
+  telemetryInterval: 100,
+  heartbeatInterval: 1000,
+  maxLogSize: 100,
+  backupEnabled: true,
+  backupInterval: 24,
+}
+
+const DEFAULT_ROBOT_PARAMETERS = {
+  maxSpeed: 1.0,
+  maxAcceleration: 1.0,
+  defaultSpeed: 0.1,
+  defaultAcceleration: 0.5,
+  jogDistance: 0.01,
+  jogSpeed: 0.1,
+  safetyLimits: {
+    workspace: {
+      min: { x: -1.0, y: -1.0, z: 0.0 },
+      max: { x: 1.0, y: 1.0, z: 1.0 },
+    },
+    jointLimits: {
+      min: { base: -360, shoulder: -360, elbow: -360, wrist1: -360, wrist2: -360, wrist3: -360 },
+      max: { base: 360, shoulder: 360, elbow: 360, wrist1: 360, wrist2: 360, wrist3: 360 },
+    },
+  },
+}
 
 // API base URL - in production this would be configurable
 const API_BASE = process.env.NODE_ENV === 'production' 
   ? window.location.origin.replace(/:\d+/, ':8000')
   : 'http://localhost:8000'
 
-interface KioskStore {
-  // Session state
-  sessionId: string | null
-  isLocked: boolean
-  isSupervisor: boolean
-  
-  // Robot state
-  robotConnected: boolean
-  robotState: RobotState
-  telemetry: RobotTelemetry | null
-  
-  // UI state
-  currentScreen: string
-  isFullscreen: boolean
-  showDebugInfo: boolean
-  
-  // Chess state
-  boardState: ChessGameState | null
-  engineStatus: any | null
-  
-  // Settings
-  settings: KioskSettings
-  
-  // Actions
-  initializeSession: () => Promise<string | null>
-  unlock: (pin: string) => boolean
-  lock: () => void
-  authenticateSupervisor: (pin: string) => Promise<boolean>
-  
-  // Robot control actions
-  connectRobot: (hostname?: string, port?: number) => Promise<boolean>
-  disconnectRobot: () => Promise<boolean>
-  homeRobot: () => Promise<boolean>
-  jogRobot: (jogRequest: JogRequest) => Promise<boolean>
-  stopRobot: () => Promise<boolean>
-  emergencyStop: () => Promise<boolean>
-  
-  // Chess actions
-  chessMove: (fromSquare: string, toSquare: string, promotion?: string) => Promise<boolean>
-  
-  // State updates
-  updateTelemetry: (telemetry: RobotTelemetry) => void
-  updateSettings: (newSettings: Partial<KioskSettings>) => void
-  setCurrentScreen: (screen: string) => void
-  toggleFullscreen: () => void
-  toggleDebugInfo: () => void
-}
+// Simplified interface for JavaScript compatibility
+const createKioskStore = () => ({
 
-export const useKioskStore = create<KioskStore>()(
+export const useKioskStore = create(
   persist(
     (set, get) => ({
       // Session state
@@ -78,7 +78,7 @@ export const useKioskStore = create<KioskStore>()(
       
       // Robot state
       robotConnected: false,
-      robotState: 'IDLE' as RobotState,
+      robotState: 'IDLE',
       telemetry: null,
       
       // UI state
@@ -90,7 +90,7 @@ export const useKioskStore = create<KioskStore>()(
       boardState: null,
       engineStatus: null,
       
-      // Settings with proper defaults from shared types
+      // Settings with defaults
       settings: {
         robot: DEFAULT_ROBOT_CONFIG,
         security: DEFAULT_SECURITY_CONFIG,
