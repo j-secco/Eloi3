@@ -8,9 +8,10 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:ui\" \"npm run dev:server\"",
-    "dev:ui": "cd apps/kiosk-ui && npm run dev",
-    "dev:server": "cd apps/robot-server && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "install:dev": "./install-dev.sh",
+    "dev": "./start-development.sh",
+    "dev:ui": "./start-frontend.sh",
+    "dev:server": "./start-backend.sh",
     "build": "npm run build:ui && npm run build:server",
     "build:ui": "cd apps/kiosk-ui && npm run build",
     "build:server": "cd apps/robot-server && echo 'Server build complete'",
@@ -19,7 +20,7 @@
     "test:e2e": "cd apps/kiosk-ui && npm run test:e2e",
     "lint": "npm run lint:ui",
     "lint:ui": "cd apps/kiosk-ui && npm run lint",
-    "install:all": "npm install && cd apps/kiosk-ui && npm install && cd ../robot-server && pip install -r requirements.txt"
+    "install:all": "./install-dev.sh"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
