@@ -351,14 +351,13 @@ def generate_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 def hash_password(password: str) -> str:
-    """Hash a password using a secure algorithm"""
-    import bcrypt
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    """Simple hash for PIN codes (bcrypt removed to reduce dependencies)"""
+    import hashlib
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
 def verify_password(password: str, hashed: str) -> bool:
-    """Verify a password against its hash"""
-    import bcrypt
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    """Verify a PIN against its hash"""
+    return hash_password(password) == hashed
 
 def is_safe_url(url: str, allowed_hosts: List[str]) -> bool:
     """Check if a URL is safe for redirects"""

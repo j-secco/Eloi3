@@ -1,19 +1,28 @@
+# Core FastAPI dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 websockets==12.0
 pydantic==2.5.0
 python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+
+# Chess game dependencies (optional feature)
 python-chess==1.999
 stockfish==3.28.0
+
+# Robot communication (when hardware available)
 ur-rtde==1.5.7
+
+# Utility dependencies
 PyYAML==6.0.1
 colorama==0.4.6
-numpy==1.24.3
-opencv-python==4.8.1.78
-Pillow==10.1.0
 aiofiles==23.2.1
-python-socketio==5.10.0
-python-engineio==4.7.1
+
+# Removed unused dependencies:
+# opencv-python==4.8.1.78 - Not used anywhere (60MB+ package)
+# Pillow==10.1.0 - Not used anywhere
+# numpy==1.24.3 - Not used anywhere  
+# python-socketio==5.10.0 - Not used (we use native WebSockets)
+# python-engineio==4.7.1 - Not used (we use native WebSockets)
+# python-jose[cryptography]==3.3.0 - Overkill for simple PIN authentication
+# passlib[bcrypt]==1.7.4 - Overkill for simple PIN authentication
 

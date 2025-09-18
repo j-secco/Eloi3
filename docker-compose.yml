@@ -41,12 +41,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    depends_on:
-      - redis
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.robot-server.rule=Host(`robot.localhost`)"
-      - "traefik.http.services.robot-server.loadbalancer.server.port=8000"
+    # Redis dependency removed - sessions are stored in-memory
+    # Traefik labels removed - reverse proxy not used in development
 
   # Kiosk UI (React PWA with Nginx)
   kiosk-ui:
@@ -78,137 +74,16 @@ services:
       start_period: 30s
     depends_on:
       - robot-server
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.kiosk-ui.rule=Host(`localhost`)"
-      - "traefik.http.services.kiosk-ui.loadbalancer.server.port=443"
-      - "traefik.http.routers.kiosk-ui.tls=true"
+    # Traefik labels removed - reverse proxy not used in development
 
-  # Redis for caching and session storage
-  redis:
-    image: redis:7-alpine
-    container_name: ur10-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-ur10-redis-password}
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-ur10-redis-password}
-    volumes:
-      - redis-data:/data
-    networks:
-      - ur10-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    labels:
-      - "traefik.enable=false"
+  # Redis service removed - sessions are stored in-memory, not in Redis
 
-  # PostgreSQL database (optional, for production)
-  postgres:
-    image: postgres:15-alpine
-    container_name: ur10-postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-ur10_kiosk}
-      - POSTGRES_USER=${POSTGRES_USER:-ur10_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ur10_password}
-      - PGDATA=/var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./deployment/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - ur10-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ur10_user} -d ${POSTGRES_DB:-ur10_kiosk}"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    labels:
-      - "traefik.enable=false"
-    profiles:
-      - production
+  # PostgreSQL service removed - no database needed (all data is in-memory)
 
-  # Traefik reverse proxy (optional)
-  traefik:
-    image: traefik:v3.0
-    container_name: ur10-traefik
-    restart: unless-stopped
-    command:
-      - "--api.dashboard=true"
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"  # Traefik dashboard
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-data:/letsencrypt
-    networks:
-      - ur10-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
-      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
-    profiles:
-      - traefik
-
-  # Monitoring with Prometheus (optional)
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: ur10-prometheus
-    restart: unless-stopped
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    volumes:
-      - ./deployment/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    networks:
-      - ur10-network
-    ports:
-      - "9090:9090"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)"
-    profiles:
-      - monitoring
-
-  # Grafana for visualization (optional)
-  grafana:
-    image: grafana/grafana:latest
-    container_name: ur10-grafana
-    restart: unless-stopped
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./deployment/docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./deployment/docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
-    networks:
-      - ur10-network
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
-    profiles:
-      - monitoring
+  # Production services removed for development simplicity:
+  # - Traefik reverse proxy (not needed for dev)
+  # - Prometheus monitoring (overkill for dev) 
+  # - Grafana dashboards (overkill for dev)
 
 # Networks
 networks:
@@ -220,22 +95,20 @@ networks:
 
 # Volumes
 volumes:
+  # Volumes for active services
   robot-data:
     driver: local
   robot-logs:
-    driver: local
-  redis-data:
-    driver: local
-  postgres-data:
     driver: local
   nginx-cache:
     driver: local
   nginx-logs:
     driver: local
-  traefik-data:
-    driver: local
-  prometheus-data:
-    driver: local
-  grafana-data:
-    driver: local
+  
+  # Removed unused volumes:
+  # redis-data (Redis service removed)
+  # postgres-data (PostgreSQL service removed)
+  # traefik-data (Traefik service removed)
+  # prometheus-data (Prometheus service removed)
+  # grafana-data (Grafana service removed)
 
